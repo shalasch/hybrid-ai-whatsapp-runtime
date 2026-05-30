@@ -1,6 +1,6 @@
 # Hybrid AI WhatsApp Runtime
 
-AI Decision API (v3) — a deterministic decision layer for a WhatsApp operational runtime built on **LangGraph + FastAPI**.
+AI Decision API **(v3.1)** — OpenAI-powered decision layer for a WhatsApp operational runtime built on **LangGraph + FastAPI**.
 
 This is not a chatbot. It is a structured decision layer that sits behind n8n and returns a typed JSON routing decision.
 
@@ -13,16 +13,26 @@ WhatsApp Cloud API
   → n8n intake + deterministic validation
   → POST /decide  ←─ this service
       LangGraph pipeline:
-        classify_intent
-        memory_builder
-        retrieve_context   (basic RAG mock)
-        decision_node
-        validation_node    (confidence + human escalation)
+        classify_intent       (pre-classify intent hint)
+        memory_builder        (memory update contract)
+        retrieve_context      (basic RAG)
+        decision_node         (OpenAI gpt-4.1-mini structured output)
+                               └─ fallback: deterministic rules if no API key
+        validation_node       (confidence thresholds + human escalation)
   → structured DecideResponse (JSON)
   → n8n validates routing_action
   → deterministic handler execution
   → Airtable logs / state updates
 ```
+
+### Decision modes
+
+| Mode | When | Behaviour |
+|------|------|-----------|
+| **OpenAI** | `OPENAI_API_KEY` is set | `gpt-4.1-mini` returns structured JSON via `response_format` |
+| **Deterministic fallback** | no key or API error | rule-based routing, same contract |
+
+`validation_node` enforces confidence thresholds in **both** modes.
 
 **Design principle:** the AI layer recommends — n8n validates and executes. This service never sends WhatsApp messages, mutates Airtable records, or triggers business-critical side-effects directly.
 
@@ -121,6 +131,37 @@ curl -X POST http://localhost:8000/decide \
   "runtime_warnings": []
 }
 ```
+
+### v3.1 — OpenAI-powered response example
+
+With `OPENAI_API_KEY` set, the same offshore request above returns an AI-generated decision:
+
+```json
+{
+  "routing_action": "send_quiz",
+  "message_type": "text",
+  "message_body": "Ótimo, Maria! Para entender melhor o seu perfil e objetivo com o inglês offshore, posso te enviar um diagnóstico rápido? Leva menos de 2 minutos e nos ajuda a personalizar sua trilha. Pode ser?",
+  "confidence": 0.91,
+  "needs_human": false,
+  "reason": "Lead demonstrou interesse explícito em inglês offshore para entrevistas; diagnóstico é o próximo passo natural.",
+  "reasoning": {
+    "intent": "offshore_interest",
+    "matched_signals": ["offshore", "entrevista", "lead.interesse=offshore"],
+    "risk_flags": [],
+    "decision_factors": ["openai_structured_output", "runtime_context"]
+  },
+  "memory_update": {
+    "last_intent": "offshore_interest",
+    "interest_area": "offshore"
+  },
+  "retrieval": { "used": false, "sources": [] },
+  "runtime_warnings": []
+}
+```
+
+Without `OPENAI_API_KEY` the deterministic fallback produces the same `routing_action` with a shorter `message_body`.
+
+---
 
 ### Missing-name test (triggers `ask_name`)
 

@@ -1,5 +1,7 @@
 from app.graph.state import DecisionGraphState
 from app.contracts.decision_output import DecideResponse, ReasoningTrace, RetrievalInfo
+from app.services.openai_client import get_client
+from app.observability.logger import logger
 
 
 def decision_node(state: DecisionGraphState) -> DecisionGraphState:
@@ -8,6 +10,31 @@ def decision_node(state: DecisionGraphState) -> DecisionGraphState:
     docs = state.get("retrieved_docs", [])
     memory_update = state.get("memory_update")
 
+    client = get_client()
+    if client:
+        try:
+            ai = client.get_decision(ctx, intent, docs)
+            decision = DecideResponse(
+                routing_action=ai.routing_action,
+                message_type="text",
+                message_body=ai.message_body,
+                confidence=ai.confidence,
+                needs_human=ai.needs_human,
+                reason=ai.reason,
+                reasoning=ReasoningTrace(
+                    intent=intent,
+                    matched_signals=ai.matched_signals,
+                    risk_flags=ai.risk_flags,
+                    decision_factors=["openai_structured_output", "runtime_context"],
+                ),
+                memory_update=memory_update,
+                retrieval=RetrievalInfo(used=bool(docs), sources=[d.source for d in docs]),
+            )
+            return {**state, "decision": decision}
+        except Exception as exc:
+            logger.warning("openai_decision_failed_using_fallback", error=str(exc))
+
+    # --- deterministic fallback (no API key or OpenAI call failed) ---
     routing_action = "human_wait"
     message_body = "Vou encaminhar sua mensagem para uma pessoa da equipe te ajudar melhor."
     confidence = 0.55
@@ -67,8 +94,12 @@ def decision_node(state: DecisionGraphState) -> DecisionGraphState:
         confidence=confidence,
         needs_human=needs_human,
         reason=reason,
-        reasoning=ReasoningTrace(intent=intent, matched_signals=matched_signals, decision_factors=["deterministic_guardrails", "runtime_context"]),
+        reasoning=ReasoningTrace(
+            intent=intent,
+            matched_signals=matched_signals,
+            decision_factors=["deterministic_guardrails", "runtime_context"],
+        ),
         memory_update=memory_update,  # type: ignore[arg-type]
-        retrieval=RetrievalInfo(used=bool(docs), sources=[doc.source for doc in docs]),
+        retrieval=RetrievalInfo(used=bool(docs), sources=[d.source for d in docs]),
     )
     return {**state, "decision": decision}

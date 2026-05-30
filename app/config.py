@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = True
     openai_api_key: str | None = None
+    openai_model: str = "gpt-4.1-mini"
     langsmith_tracing: bool = False
     langsmith_api_key: str | None = None
     langsmith_project: str = "schillings-ai-runtime-local"
