@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(cd \"C:\\\\Users\\\\Shala\\\\Desktop\\\\AI_PROJECTS\\\\hybrid-ai-whatsapp-runtime\"; Start-Process -FilePath \".venv\\\\Scripts\\\\uvicorn\" -ArgumentList \"app.main:app\",\"--port\",\"8000\" -NoNewWindow -PassThru | ForEach-Object { $proc = $_; Start-Sleep -Seconds 3; try { $r = Invoke-WebRequest -Uri http://localhost:8000/health -UseBasicParsing; \"Health: $\\($r.Content\\)\" } catch { \"Error: $_\" } finally { $proc.Kill\\(\\) } })"
-    ]
-  }
-}

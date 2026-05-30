@@ -1,0 +1,42 @@
+# Python
+
+**pycache**/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual Environment
+
+.venv/
+venv/
+
+# Environment Variables
+
+.env
+
+# VSCode
+
+.vscode/
+
+# Pytest
+
+.pytest_cache/
+
+# Claude
+
+.claude/
+
+# LangSmith
+
+.langsmith/
+
+# OS
+
+.DS_Store
+Thumbs.db
+
+# Coverage
+
+.coverage
+htmlcov/
