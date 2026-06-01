@@ -1,4 +1,4 @@
-# Hybrid AI WhatsApp Runtime
+# Hybrid AI Runtime Architecture
 
 > Hybrid orchestration runtime for stateful WhatsApp pipelines — structured AI decision engine over a deterministic execution layer.
 
