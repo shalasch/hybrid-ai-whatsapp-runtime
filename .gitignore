@@ -23,9 +23,6 @@ venv/
 
 .pytest_cache/
 
-# Claude
-
-.claude/
 
 # LangSmith
 
