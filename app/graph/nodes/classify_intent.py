@@ -1,7 +1,10 @@
+import time
 from app.graph.state import DecisionGraphState
+from app.observability.logger import logger
 
 
 def classify_intent(state: DecisionGraphState) -> DecisionGraphState:
+    _start = time.monotonic()
     ctx = state["runtime_context"]
     text = (ctx.message.text or "").lower().strip()
     payload = (ctx.message.payload or "").lower().strip()
@@ -23,4 +26,16 @@ def classify_intent(state: DecisionGraphState) -> DecisionGraphState:
     else:
         intent = "unknown"
 
-    return {**state, "intent": intent, "debug": {**state.get("debug", {}), "intent": intent}}
+    duration_ms = round((time.monotonic() - _start) * 1000, 2)
+    logger.info(
+        "CLASSIFY_INTENT_COMPLETED",
+        node_name="classify_intent",
+        intent=intent,
+        duration_ms=duration_ms,
+    )
+
+    debug = {
+        **state.get("debug", {}),
+        "classify_intent": {"intent": intent, "duration_ms": duration_ms},
+    }
+    return {**state, "intent": intent, "debug": debug}

@@ -1,20 +1,53 @@
+import time
 from app.graph.state import DecisionGraphState
 from app.contracts.decision_output import DecideResponse, ReasoningTrace, RetrievalInfo
 from app.services.openai_client import get_client
 from app.observability.logger import logger
 
 
+def _make_retrieval_info(docs: list, embedding_provider: str) -> RetrievalInfo:
+    return RetrievalInfo(
+        used=bool(docs),
+        sources=[d.source for d in docs],
+        top_scores=[round(d.score, 4) for d in docs],
+        embedding_provider=embedding_provider if docs else None,
+    )
+
+
+def _emit_decision_log(decision_mode: str, decision: DecideResponse, intent: str, doc_count: int, duration_ms: float) -> None:
+    logger.info(
+        "DECISION_NODE_COMPLETED",
+        node_name="decision_node",
+        decision_mode=decision_mode,
+        routing_action=decision.routing_action,
+        confidence=decision.confidence,
+        needs_human=decision.needs_human,
+        intent=intent,
+        retrieved_doc_count=doc_count,
+        duration_ms=duration_ms,
+    )
+
+
 def decision_node(state: DecisionGraphState) -> DecisionGraphState:
+    _start = time.monotonic()
     ctx = state["runtime_context"]
     intent = state.get("intent", "unknown")
     docs = state.get("retrieved_docs", [])
     memory_update = state.get("memory_update")
+    doc_count = len(docs)
+
+    from app.config import settings
+    embedding_provider = settings.rag_embedding_provider
 
     client = get_client()
     if client:
         try:
             ai = client.get_decision(ctx, intent, docs)
+            duration_ms = round((time.monotonic() - _start) * 1000, 2)
             decision = DecideResponse(
+                lead_id=ctx.lead.id,
+                conversation_id=ctx.conversation.id,
+                runtime_context=ctx,
                 routing_action=ai.routing_action,
                 message_type="text",
                 message_body=ai.message_body,
@@ -28,9 +61,22 @@ def decision_node(state: DecisionGraphState) -> DecisionGraphState:
                     decision_factors=["openai_structured_output", "runtime_context"],
                 ),
                 memory_update=memory_update,
-                retrieval=RetrievalInfo(used=bool(docs), sources=[d.source for d in docs]),
+                retrieval=_make_retrieval_info(docs, embedding_provider),
             )
-            return {**state, "decision": decision}
+            _emit_decision_log("openai_structured_output", decision, intent, doc_count, duration_ms)
+            debug = {
+                **state.get("debug", {}),
+                "decision_node": {
+                    "decision_mode": "openai_structured_output",
+                    "routing_action": decision.routing_action,
+                    "confidence": decision.confidence,
+                    "intent": intent,
+                    "retrieved_doc_count": doc_count,
+                    "risk_flags": ai.risk_flags,
+                    "duration_ms": duration_ms,
+                },
+            }
+            return {**state, "decision": decision, "debug": debug}
         except Exception as exc:
             logger.warning("openai_decision_failed_using_fallback", error=str(exc))
 
@@ -78,8 +124,8 @@ def decision_node(state: DecisionGraphState) -> DecisionGraphState:
         routing_action = "answer_faq"
         message_body = docs[0].content
         confidence = 0.74
-        reason = "Pergunta geral respondida com base na knowledge base básica."
-        matched_signals.append("basic rag match")
+        reason = "Pergunta geral respondida com base na knowledge base."
+        matched_signals.append("rag match")
     else:
         routing_action = "send_menu" if ctx.lead.nome else "ask_name"
         message_body = "Posso te ajudar com inglês offshore, inglês profissional, inglês geral, aula experimental ou suporte. Qual opção faz mais sentido para você?"
@@ -87,7 +133,11 @@ def decision_node(state: DecisionGraphState) -> DecisionGraphState:
         reason = "Intenção insuficiente; menu seguro recomendado."
         matched_signals.append("low intent clarity")
 
+    duration_ms = round((time.monotonic() - _start) * 1000, 2)
     decision = DecideResponse(
+        lead_id=ctx.lead.id,
+        conversation_id=ctx.conversation.id,
+        runtime_context=ctx,
         routing_action=routing_action,  # type: ignore[arg-type]
         message_type="text",
         message_body=message_body,
@@ -100,6 +150,19 @@ def decision_node(state: DecisionGraphState) -> DecisionGraphState:
             decision_factors=["deterministic_guardrails", "runtime_context"],
         ),
         memory_update=memory_update,  # type: ignore[arg-type]
-        retrieval=RetrievalInfo(used=bool(docs), sources=[d.source for d in docs]),
+        retrieval=_make_retrieval_info(docs, embedding_provider),
     )
-    return {**state, "decision": decision}
+    _emit_decision_log("deterministic_fallback", decision, intent, doc_count, duration_ms)
+    debug = {
+        **state.get("debug", {}),
+        "decision_node": {
+            "decision_mode": "deterministic_fallback",
+            "routing_action": decision.routing_action,
+            "confidence": decision.confidence,
+            "intent": intent,
+            "retrieved_doc_count": doc_count,
+            "matched_signals": matched_signals,
+            "duration_ms": duration_ms,
+        },
+    }
+    return {**state, "decision": decision, "debug": debug}

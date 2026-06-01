@@ -40,3 +40,17 @@ Thumbs.db
 
 .coverage
 htmlcov/
+
+
+# Runtime data
+
+data/*.sqlite
+data/*.db
+data/*.jsonl
+data/chroma/
+data/chroma_test/
+
+__pycache__/
+*.pyc
+data/chroma/
+.env

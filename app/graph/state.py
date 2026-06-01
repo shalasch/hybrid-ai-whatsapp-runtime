@@ -3,8 +3,10 @@ from app.contracts.runtime_context import RuntimeContext
 from app.contracts.decision_output import DecideResponse, MemoryUpdate
 from app.rag.retriever import RetrievedDocument
 
+
 class DecisionGraphState(TypedDict, total=False):
     runtime_context: RuntimeContext
+    trace_id: str
     intent: str
     retrieved_docs: list[RetrievedDocument]
     memory_update: MemoryUpdate
